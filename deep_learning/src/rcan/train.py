@@ -1,4 +1,3 @@
-import wandb
 import torch
 import logging
 import sys
@@ -9,9 +8,9 @@ from torch import optim
 import torch.nn as nn
 from tqdm import tqdm
 import argparse
-from src.data_manager.dataset import AltDataSetManager
-from src.architectures.rcan.eval import eval_net
-from src.architectures.rcan.model import RCAN
+from src.data_manager.dataset import DataSetManager
+from src.rcan.eval import eval_net
+from src.rcan.model import RCAN
 
 
 # TODO decrease epochs
@@ -56,13 +55,8 @@ def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, valid
             'rcan_feats': net.module.n_feats,
             'rcan_kernel_size': net.module.kernel_size,
         }
-    wandb.init(project='sim_expansion', config=config)
-    if run_name:
-        wandb.run.name = run_name
-        wandb.run.save()
-    wandb.watch(net)
 
-    dataset = AltDataSetManager(dataset_dir, preload=preload_data)
+    dataset = DataSetManager(dataset_dir, preload=preload_data)
     print(f'{len(dataset)} total datapoints')
     n_val = int(len(dataset) * validation_perc)
     print(f'{n_val} validation datapoints')
@@ -124,15 +118,13 @@ def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, valid
                                       (int(num_batches / validation_rounds_per_epoch))) == 0) or global_step == 1:
                     tqdm.write('Eval time')
                     # TODO change back to val loader
-                    val_score = eval_net(net, val_loader, device, global_step, criterion)
-                    # val_score = eval_net(net, train_loader, device, wandb_step, criterion)
+                    val_score = eval_net(net, val_loader, device, criterion)
                     tqdm.write(f'Val score: {val_score}')
                     scheduler.step(val_score)
 
                     log_data['val_score'] = val_score
 
                     logging.info('Validation cross entropy: {}'.format(val_score))
-                wandb.log(log_data, step=global_step)
 
         if epoch % 5 == 0:
             learning_rate *= 0.99
@@ -144,20 +136,17 @@ def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, valid
                     pass
                 chkp_file = os.path.join(checkpoint_dir + f'CP_epoch{epoch + 1}.pth')
                 torch.save(net, chkp_file)
-                wandb.save(chkp_file)
                 logging.info(f'Checkpoint {epoch + 1} saved !')
 
         global_step += 1
-        wandb.log({'epoch_loss': epoch_loss}, step=global_step)
 
-    # torch.save(net.state_dict(), os.path.join(wandb.run.dir, 'model.pt'))
     # writer.close()
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-cd', '--checkpoint-dir', default=os.path.join(os.path.dirname(__file__), 'checkpoints'))
-    parser.add_argument('-dd', '--data-dir', default='/Volumes/Samsung_T5/structured_data/zeiss/datapoints')
+    parser.add_argument('-dd', '--data-dir', required=True)
     parser.add_argument('-s', '--save-checkpoints', action='store_true')
     parser.add_argument('-t', '--test-size', action='store_true')
     parser.add_argument('-b', '--batch-size', type=int, default=2)
@@ -227,7 +216,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         interrupt_fname = 'INTERRUPTED.pth'
         torch.save(net, interrupt_fname)
-        wandb.save(interrupt_fname)
         logging.info('Saved interrupt')
         try:
             sys.exit(0)
@@ -235,4 +223,3 @@ if __name__ == '__main__':
             os._exit(0)
     outpath = os.path.join(os.getcwd(), args.rname + '.pth')
     torch.save(net, outpath)
-    wandb.save(outpath)

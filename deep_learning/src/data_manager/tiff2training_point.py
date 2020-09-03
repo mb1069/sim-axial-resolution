@@ -9,19 +9,21 @@ from tifffile import imread, imwrite
 from multiprocessing import Pool
 
 
+# Script to transform directory of full SIM image stacks into training data
+# Arguments:
+#    input_dir: directory containing pairs of SIM images and high-res image stacks in format <n_in.tif, n_lout.tif>
+#    outdir: output_directory
+#    nframes: number of SIM reconstructions to include per training point (i.e concurrent processing chunk size of network)
+
 def normalise(img):
-    # img_max = 255
-    # img_min = 0
-    # return np.nan_to_num((img - img_min) / (img_max - img_min))
     return img / 255
-    # return img
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_dir', default='/Users/miguelboland/Projects/uni/tmp')
-    parser.add_argument('--outdir', default='/Users/miguelboland/Projects/uni/tmp2')
-    parser.add_argument('--nframes', default=1, type=int)
+    parser.add_argument('--input_dir', required=True)
+    parser.add_argument('--outdir', required=True)
+    parser.add_argument('--nframes', default=3, type=int)
     return parser.parse_args()
 
 
@@ -40,11 +42,6 @@ output_frames = n_frames * out_channels
 imgs = os.listdir(dirname)
 
 pairs = pair_files(imgs)
-
-
-def resize(data):
-    return data
-    # return cv2.resize(data, dsize=(512, 512), interpolation=cv2.INTER_CUBIC)
 
 
 class TiffImagePair:
@@ -106,32 +103,6 @@ class NonOverlappingFramesSingleChannel2DOutput(NonOverlappingFramesSingleChanne
         data = super().__getitem__(i)
         data['processed'] = data['processed'].squeeze()
         return data
-
-
-class Overlappingframes(TiffImagePair):
-    # 2D RCAN3D, 3 overlapping frames (ie input frames 1-9 -> output frames 1-3), channels are illuminations across all Z
-    # IE format is Z, X, Y
-    def __getitem__(self, i):
-        if i + in_channels + n_frames - 1 >= self.z:
-            raise StopIteration
-        in_img_data = np.array(self.in_img[i:i + in_channels + n_frames - 1])
-        out_img_data = np.array(self.out_img[i + in_channels: i + in_channels + n_frames])
-        return {'raw': normalise(in_img_data),
-                'processed': normalise(out_img_data)}
-
-
-class NonOverlappingFrames(TiffImagePair):
-    # 2D RCAN3D, 3 consecutive frames (zeiss format w/ 3 ang * 5 phases)
-    def __getitem__(self, i):
-        start_in = i * in_channels
-        end_in = (i + n_frames) * in_channels
-        in_img_data = np.array(self.in_img[start_in:end_in])
-
-        start_out = i * out_channels
-        end_out = (i * out_channels) + output_frames
-        out_img_data = np.array(self.out_img[start_out:end_out])
-        return {'raw': normalise(in_img_data),
-                'processed': normalise(out_img_data)}
 
 
 def convert_filepair(pair):

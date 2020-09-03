@@ -1,11 +1,8 @@
-from src.architectures.rcan import common
+from rcan import common
 import torch.nn as nn
 
 
-def make_model(args, parent=False):
-    return RCAN(args)
-
-
+# Adapted from implementation found below
 # https://github.com/thstkdgus35/EDSR-PyTorch/blob/master/src/model/rcan.py
 
 ## Channel Attention (CA) Layer
@@ -70,7 +67,8 @@ class ResidualGroup(nn.Module):
 
 ## Residual Channel Attention Network (RCAN3D)
 class RCAN(nn.Module):
-    def __init__(self, n_input_channels, n_output_channels, n_frames, n_groups, n_blocks, n_feats, conv=common.default_conv):
+    def __init__(self, n_input_channels, n_output_channels, n_frames, n_groups, n_blocks, n_feats,
+                 conv=common.default_conv):
         super(RCAN, self).__init__()
         in_channels = n_input_channels
         self.n_resgroups = n_groups
