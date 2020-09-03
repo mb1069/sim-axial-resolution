@@ -10,6 +10,11 @@ import os
 import pandas as pd
 from scipy import fftpack
 from scipy.optimize import curve_fit
+import re
+
+# Script to generate all results csv used to generate R charts
+# Results from RCAN models are generated on the fly if no file matching the expected pattern is found (<model_name>_out.tif)
+show_charts = False
 
 current_dir = os.path.dirname(__file__)
 results_dir = os.path.join(current_dir, 'processed_images')
@@ -70,6 +75,7 @@ def load_norm_img(fpath):
     data = data / data.max()
     return data
 
+
 def gauss(x, A, mu, sigma):
     return A * np.exp(-(x - mu) ** 2 / (2. * sigma ** 2))
 
@@ -82,8 +88,8 @@ def fit_curve(x, y):
     max_val = np.real(y.max())
     mu_val = x.mean()
     # Autcorrelation function
-    func1_min_bounds = [max_val/50, mu_val - 0.0000001, 0.01]
-    func1_max_bounds = [max_val/2, mu_val + 0.0000001, np.sqrt(x.max()/2)]
+    func1_min_bounds = [max_val / 50, mu_val - 0.0000001, 0.01]
+    func1_max_bounds = [max_val, mu_val + 0.0000001, np.sqrt(x.max() / 2)]
     func1_estimate = [max_val / 3, mu_val, 1]
 
     # Interference function
@@ -94,34 +100,30 @@ def fit_curve(x, y):
     bounds = (func1_min_bounds + func2_min_bounds, func1_max_bounds + func2_max_bounds)
     p0 = func1_estimate + func2_estimate
 
-
-    # min_bounds = (max_val / 1000, mu_val - 0.0000001, 0) * 2
-    # max_bounds = (max_val * 2, mu_val + 0.0000001, np.inf) * 2
-    # p0 = [max_val / 2, mu_val, 1] * 2
-    # bounds = (min_bounds, max_bounds)
     popt, pcov = curve_fit(gauss_pairs, x, y, p0=p0, bounds=bounds)
-    err = np.sqrt(np.diag(pcov))
-    print(f'Error: {err}')
     return popt[0:3], popt[3:]
+
 
 def get_2nd_fwhm(x, param1, param2):
     y1 = gauss(x, *param1)
     y2 = gauss(x, *param2)
-    l2, = mp.plot(x, y1, label='Gauss1', linestyle='--')
-    l3, = mp.plot(x, y2, label='Gauss2', linestyle='-.')
-
-    params = param1 if param1[2] < param2[2] else param2
+    if show_charts:
+        l2, = mp.plot(x, y1, label='Gauss1', linestyle='--')
+        l3, = mp.plot(x, y2, label='Gauss2', linestyle='-.')
+    # Select gaussian with smallest standard dev unless one has insignificant amplitude
+    params = param1 if param1[2] < param2[2] and param2[0] > 1 else param2
     series = gauss(x, *params)
     try:
         hmx = half_max_x(x, series)
         fwhm = (hmx[1] - hmx[0])
         half = float(max(np.real(series)) / 2)
-        mp.plot(np.real(hmx), [half, half])
-        print(f'Alt fwhm: {round(fwhm, 5)}')
+        if show_charts:
+            mp.plot(np.real(hmx), [half, half])
     except IndexError:
         print('No axis crossing')
-    mp.legend(handles=[l2, l3])
-    mp.show()
+    if show_charts:
+        mp.legend(handles=[l2, l3])
+        mp.show()
     return fwhm
 
 
@@ -132,66 +134,47 @@ def fwhm(series, series_len, img_name, model_name):
     fwhm2 = get_2nd_fwhm(x, param1, param2)
     y1 = gauss(x, *param1)
     y2 = gauss(x, *param2)
-    l2, = mp.plot(x, y1, label='Gauss1', linestyle='--')
-    l3, = mp.plot(x, y2, label='Gauss2', linestyle='-.')
-    lfull, = mp.plot(x, y1 + y2, label='Gauss1+Gauss2', linestyle=':')
+    if show_charts:
+        l2, = mp.plot(x, y1, label='Gauss1', linestyle='--')
+        l3, = mp.plot(x, y2, label='Gauss2', linestyle='-.')
+        lfull, = mp.plot(x, y1 + y2, label='Gauss1+Gauss2', linestyle=':')
 
-    lreal, = mp.plot(x, np.real(series), label='Real')
+        lreal, = mp.plot(x, np.real(series), label='Real')
     if 'RCAN' in model_name:
         model_name = 'RCAN_' + model_name.split('_')[-1]
-    mp.title(f'{img_name}_{model_name}')
-    hmx = half_max_x(x, series)
-    if hmx:
-        half = float(max(np.real(series)) / 2)
-        mp.plot(np.real(hmx), [half, half])
-    mp.legend(handles=[lreal, l2, l3, lfull])
-    mp.show(block=False)
+    if show_charts:
+        mp.title(f'{img_name}_{model_name}')
+    if show_charts:
+        mp.legend(handles=[lreal, l2, l3, lfull])
+        mp.show(block=False)
 
     return fwhm2
-    if hmx:
-        fwhm = hmx[1] - hmx[0]
-        return fwhm
-    return None
 
 
-# FFTn
-# Pspectrum
-# Sum along axis other than desired
-# Pad center of fft for increased resolution
-# Inverse fft
 def benchmark_fwhm(img, img_name, model_name):
     fft = fftpack.fftn(img)
-    print(fft.shape)
 
     pspectrum = np.abs(fft) ** 2
 
     results = []
 
-    # for axis, c in zip(('X', 'Y', 'Z', 'XY'), [(0, 1), (0, 2), (1, 2), (0,)]):
     for axis, c in zip(('Z', 'XY'), [(1, 2), (0,)]):
-    # for axis, c in zip(('Z',), ((1,2),)):
-    # for axis, c in zip(('XY',), ((0,),)):
-    # for axis, c in zip(('Y',), ((0,2),)):
 
         print(f'\tProcessing axis {axis}')
         summed_pspectrum = np.sum(pspectrum, axis=c)
         if axis == 'XY':
             series_len = len(summed_pspectrum)
             half_len = series_len // 2
-            summed_pspectrum = np.concatenate(
+            inv_fft_spectrum = np.concatenate(
                 [summed_pspectrum[0:half_len], np.zeros((10000, summed_pspectrum.shape[0])),
                  summed_pspectrum[half_len:]])
 
-            # Summing method
-            # inv_fft_spectrum = fftpack.ifftn(summed_pspectrum)
-            # inv_fft_spectrum = inv_fft_spectrum.mean(axis=1)
-
             # Peak method
-            inv_fft_spectrum = summed_pspectrum.squeeze()
+            inv_fft_spectrum = fftpack.ifft2(inv_fft_spectrum)
             inv_fft_spectrum = fftpack.fftshift(inv_fft_spectrum)
             max_val = inv_fft_spectrum.max()
             location = np.where(inv_fft_spectrum == max_val)
-            inv_fft_spectrum = inv_fft_spectrum[location[0][0]]
+            inv_fft_spectrum = inv_fft_spectrum[:, location[1][0]]
         else:
             series_len = len(summed_pspectrum)
             half_len = series_len // 2
@@ -199,10 +182,11 @@ def benchmark_fwhm(img, img_name, model_name):
                 [summed_pspectrum[0:half_len], np.zeros(10000), summed_pspectrum[half_len:]])
 
             inv_fft_spectrum = fftpack.ifft(summed_pspectrum)
-
             inv_fft_spectrum = fftpack.fftshift(inv_fft_spectrum)
+
         fwhm_val = np.real(fwhm(inv_fft_spectrum, series_len, img_name, f'{model_name}_{axis}')) / np.sqrt(2)
         results.append((axis, fwhm_val))
+    print(results)
 
     return dict(results)
 
@@ -217,13 +201,6 @@ def get_ssim(img_data, reference_out_img, win_size=11):
         reference_out_img = reference_out_img[0:sm]
     return ssim(img_data, reference_out_img, win_size=win_size)
 
-
-# 1 {'X': 181.65729972724725, 'Y': 171.41484145006854, 'Z': 507.66653866428396, 'mse': 0.0}
-# 1.05 {'X': 130.38907416708653, 'Y': 126.61933319951795, 'Z': 360.7654770512474, 'mse': 0.0}
-# 1.1 {'X': 105.07977773124381, 'Y': 102.96478636538758, 'Z': 258.7709164128095, 'mse': 0.0}
-# 1.2 {'X': 83.48623293955617, 'Y': 82.36855950475281, 'Z': 196.37160250199173, 'mse': 0.0}
-# 1.3 {'X': 38.16984387740467, 'Y': 38.13776672210968, 'Z': 85.91623830925903, 'mse': 0.0}
-# 1.4 {'X': 32.26423892562795, 'Y': 32.19535817154094, 'Z': 73.37838902955103, 'mse': 0.0}
 
 def get_model_first_convolution(model):
     m = model
@@ -299,27 +276,22 @@ def run_model(model, model_file, inp_file):
     return data_out
 
 
-ref_imgs_in = glob.glob(os.path.join(current_dir, 'raw_imgs', '*_in.tif'))
-# ref_imgs_in = glob.glob('/Users/miguelboland/Projects/uni/sim_project/HexSimulator/single_point_in.tif')
-# ref_imgs_in = glob.glob('/Users/miguelboland/Projects/uni/sim_project/HexSimulator/500_in.tif')
-# ref_imgs_in = glob.glob('/Users/miguelboland/Projects/uni/sim_project/HexSimulator/out_batch.tif')
+class ResultGenerator:
+    def __init__(self, models, raw_img_dir, out_fname):
+        self.models = models
+        self.raw_img_dir = raw_img_dir
+        self.out_fname = out_fname
+        self.all_results = []
 
-non_model_comparisons = ['reference', 'sim']
+        self.run_all_benchmarks()
+        self.write_csv()
 
-
-# non_model_comparisons = ['sim']
-
-
-def run_all_benchmarks(models):
-    results = []
-    all_results = []
-    all_models = sorted(models + non_model_comparisons)
-    # for model_file in tqdm(all_models[8:]):
-    for model_file in all_models:
-        if model_file not in non_model_comparisons:
-            model = load_model(model_file)
-        try:
-            model_results = []
+    def run_all_benchmarks(self):
+        self.all_results = []
+        ref_imgs_in = glob.glob(os.path.join(current_dir, self.raw_img_dir, '*_in.tif'))
+        for model_file in self.models:
+            if model_file not in non_model_comparisons:
+                model = load_model(model_file)
             for img_in_name in ref_imgs_in:
                 print(f'Processing {os.path.basename(model_file)}, {os.path.basename(img_in_name)}')
                 reference_out_img = imread(img_in_name.replace('_in', '_out'))
@@ -337,70 +309,51 @@ def run_all_benchmarks(models):
                 reference_out_img = norm_img(reference_out_img)
 
                 model_result = benchmark_fwhm(img_data, os.path.basename(img_in_name), os.path.basename(model_file))
-                for axis in [k for k in model_result.keys() if k in pixel_sizes.keys()]:
-                    model_result[axis] *= pixel_sizes[axis]
+                # for axis in [k for k in model_result.keys() if k in pixel_sizes.keys()]:
+                #     model_result[axis] *= pixel_sizes[axis]
                 model_result['mse'] = float(mse(img_data, reference_out_img))
-
-                model_result['ssim'] = get_ssim(img_data, reference_out_img, win_size=11)
+                model_result['ssim'] = get_ssim(img_data, reference_out_img, win_size=3)
                 model_result['img'] = os.path.basename(img_in_name)
                 model_result['model'] = os.path.basename(model_file)
-                # model_results.append(model_result)
-                all_results.append(model_result)
-                print(model_result)
-            xy_vals = np.array([m['XY'] for m in model_results])
-            x_vals = np.array([m['X'] for m in model_results])
-            y_vals = np.array([m['Y'] for m in model_results])
-            z_vals = np.array([m['Z'] for m in model_results])
-            mse_vals = np.array([m['mse'] for m in model_results])
-            # ssim_vals = np.array([m['ssim'] for m in model_results])
+                self.all_results.append(model_result)
 
-            model_comp_results = {
-                'xy_mean': float(xy_vals.mean()),
-                'xy_stdev': float(xy_vals.std()),
-                'x_mean': float(x_vals.mean()),
-                'x_stdev': float(x_vals.std()),
-                'y_mean': float(y_vals.mean()),
-                'y_stdev': float(y_vals.std()),
-                'z_mean': float(z_vals.mean()),
-                'z_stdev': float(z_vals.std()),
-                'mse_mean': float(mse_vals.mean()),
-                'mse_stdev': float(mse_vals.std()),
-                # 'ssim_mean': ssim_vals.mean(),
-                # 'ssim_stdev': ssim_vals.std(),
-                'model_name': os.path.basename(model_file)
-            }
-            # print(model_comp_results)
+    def write_csv(self):
+        df2 = pd.DataFrame.from_dict(self.all_results)
+        df2 = df2.sort_values(['img', 'model'])
+        df2.to_csv(self.out_fname)
+        print(self.out_fname)
+        print(df2)
 
-            # quit()
-            results.append(model_comp_results)
-        except Exception as e:
-            print(f'Failed to process {model_file}')
-            print(str(e))
-            raise e
-            continue
-        # import sys
-        #
-        # local_vars = list(locals().items())
-        # for var, obj in local_vars:
-        #     print(var, sys.getsizeof(obj))
-    # df = pd.DataFrame.from_dict(results)
-    # df = df.sort_values(['z_mean'])
-    # df = df[['model_name', 'mse_mean', 'z_mean', 'z_stdev', 'x_mean', 'y_mean', 'xy_mean']]
-    # print(df)
 
-    df2 = pd.DataFrame.from_dict(all_results)
-    print(list(df2))
-    df2 = df2.sort_values(['img', 'model'])
-    print(df2)
-    df2.to_csv('masked_layers.csv')
+def get_masked_layer(img_name):
+    m = re.findall(r'\d+_struct_(.+)_mask_in.tif', img_name)
+    if len(m):
+        return m[0]
+    return 'none'
+
+
+class MaskedResultGenerator(ResultGenerator):
+    def write_csv(self):
+        df2 = pd.DataFrame.from_dict(self.all_results)
+        df2['masked_layer'] = df2['img'].map(get_masked_layer)
+        df2 = df2.sort_values(['img', 'model'])
+        print(df2)
+        df2.to_csv(self.out_fname)
 
 
 if __name__ == '__main__':
-    models = glob.glob(os.path.join(models_dir, 'MSE_2D_RCAN_w_3D_Conv_300_epochs_*chunk.pth'))
+    non_model_comparisons = ['reference', 'sim']
 
-    # models = list(filter(lambda m: '3dconv_fixed_kernels.pth' in m, models))
-    # print(get_fwhm(imread('/Users/miguelboland/Projects/uni/sim_project/HexSimulator/out3.tif'), *(236, 267), 'test'))
-    # quit()
-    # get_fwhm(imread('/Users/miguelboland/Projects/uni/project_3/src/model_runner/5_frame_2d/46_struct_out.tif'), *(587, 504))
+    all_models = glob.glob(
+        os.path.join(models_dir, 'MSE_2D_RCAN_w_3D_Conv_300_epochs_*chunk.pth')) + non_model_comparisons
+    ResultGenerator(all_models, 'raw_imgs', 'all_results.csv')
 
-    run_all_benchmarks(models)
+    final_models_no_ref = glob.glob(os.path.join(models_dir, 'MSE_2D_RCAN_w_3D_Conv_300_epochs_3chunk.pth')) + ['sim']
+    ResultGenerator(final_models_no_ref, 'noisy_imgs', 'noise_results.csv')
+
+    masked_models = glob.glob(os.path.join(models_dir, 'MSE_2D_RCAN_w_3D_Conv_300_epochs_3chunk.pth'))
+    MaskedResultGenerator(masked_models, 'masked_raw_imgs', 'masked_layers.csv')
+
+    final_models_w_ref = glob.glob(
+        os.path.join(models_dir, 'MSE_2D_RCAN_w_3D_Conv_300_epochs_3chunk.pth')) + non_model_comparisons
+    ResultGenerator(final_models_w_ref, 'external_images', 'external.csv')

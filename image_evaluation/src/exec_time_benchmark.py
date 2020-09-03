@@ -6,6 +6,7 @@ from tifffile import imread
 import torch
 import glob
 
+# Script used to evaluate execution time of deep learning models using Nvidia CUDA GPUs
 f_dir_name = os.path.dirname(__file__)
 model_file = os.path.join(f_dir_name, 'models', 'MSE_2D_RCAN_w_3D_Conv_300_epochs_3chunk.pth')
 
@@ -42,7 +43,6 @@ def run_model(model, inp_files, n_iter):
         print(inp_file)
         for i in range(n_iter):
             in_data = imread(inp_file)
-            # chunks = int(in_data.shape[0] / in_channels)
 
             indices = list(range(0, in_data.shape[0], in_channels))[1:]
             chunked_in_data = np.split(in_data, indices)

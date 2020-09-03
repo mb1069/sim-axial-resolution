@@ -4,10 +4,10 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import shutil
 import numpy as np
-import imageio
-
 from scipy.ndimage import zoom
 
+# Script used to generate comparative images for SIM / RCAN processed files
+# make_film method is also used to produce z-traverses of data such as the movie.gif included in the submission
 
 def normalise(img):
     img[img<0] = 0
@@ -41,8 +41,8 @@ def make_film(images):
 
 
 
-dirname = '/Users/miguelboland/Projects/uni/project_3/src/model_runner/benchmark/'
-outdir = '/Users/miguelboland/Projects/uni/project_3/src/write_up/results/imgs'
+dirname = ''
+outdir = ''
 
 shutil.rmtree(outdir, ignore_errors=True)
 os.makedirs(outdir)
