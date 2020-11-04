@@ -128,7 +128,7 @@ def get_2nd_fwhm(x, param1, param2):
 
 
 def fwhm(series, series_len, img_name, model_name):
-    x = np.linspace(0, series_len, len(series))
+    x = np.linspace(-series_len, (series_len/2)-1, len(series))
 
     param1, param2 = fit_curve(x, series)
     fwhm2 = get_2nd_fwhm(x, param1, param2)
@@ -140,9 +140,9 @@ def fwhm(series, series_len, img_name, model_name):
         lfull, = mp.plot(x, y1 + y2, label='Gauss1+Gauss2', linestyle=':')
 
         lreal, = mp.plot(x, np.real(series), label='Real')
-    if 'RCAN' in model_name:
-        model_name = 'RCAN_' + model_name.split('_')[-1]
     if show_charts:
+        if 'RCAN' in model_name:
+            model_name = 'RCAN_' + model_name.split('_')[-1]
         mp.title(f'{img_name}_{model_name}')
     if show_charts:
         mp.legend(handles=[lreal, l2, l3, lfull])
