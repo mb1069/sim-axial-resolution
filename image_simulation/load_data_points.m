@@ -13,22 +13,4 @@ function [points] = load_data_points(dataIndex)
 
     data_shape = size(points);
 
-%     TODO split into seperate function
-%     if exist('dataIndex', 'var')
-% 
-%     else
-%         %% Set up some random points
-%         disp("Calculating point cloud");
-%         rad = 5;        % radius of sphere/structure of points
-%         tic
-%         pointsx2 = (2*rand(npoints*2,3)-1).*[rad,rad,rad];
-% 
-%         pointsx2r = sum(pointsx2.*pointsx2,2);
-% 
-%         points_sphere = pointsx2(pointsx2r<rad^2,:);
-% 
-%         points = points_sphere((1:npoints),:);
-%         points(:,3)=points(:,3)/2;
-%         toc
-%     end
 end

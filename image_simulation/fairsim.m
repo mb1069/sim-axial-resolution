@@ -84,7 +84,7 @@ function imgout = fairsim(input_file, output_file)
     % struct_10_8 and struct_10_16
 %     h.calibrate(img(:,:,17:17+7)+img(:,:,50:57)+img(:,:,100:107));
     h.calibrate(img(:,:,7*Nz/2+1:7*Nz/2+7)+img(:,:,7*Nz/2-13:7*Nz/2-7)+img(:,:,7*Nz/2+15:7*Nz/2+21));
-    h.reset()
+    h.reset();
     toc
 
     % imsr=single(zeros(400,400,Nz*7));

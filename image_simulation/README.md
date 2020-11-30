@@ -9,4 +9,4 @@ Nucleic Acids Research, 43(8):54, 02 2015.]).
 * imstackread.m / imstackwrite.m are utility functions to read/write TIFF image stacks.
 * load_data_points.m loads chromatin structures from 50100.mat (see above paper).
 * load_point_cloud.m generates a random point cloud encased in a sphere.
-* hexSimProcessor.m is a class implementing the SIM reconstruction algorithm used above for the hexSIM microscopy setup described in our report.
+* HexSimProcessor.m is a class implementing the SIM reconstruction algorithm used above for the hexSIM microscopy setup described in our report.

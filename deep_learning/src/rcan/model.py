@@ -1,6 +1,6 @@
-from rcan import common
+from deep_learning.src.rcan import common
 import torch.nn as nn
-
+import math
 
 # Adapted from implementation found below
 # https://github.com/thstkdgus35/EDSR-PyTorch/blob/master/src/model/rcan.py
@@ -67,7 +67,7 @@ class ResidualGroup(nn.Module):
 
 ## Residual Channel Attention Network (RCAN3D)
 class RCAN(nn.Module):
-    def __init__(self, n_input_channels, n_output_channels, n_frames, n_groups, n_blocks, n_feats,
+    def __init__(self, n_input_channels, n_output_channels, n_frames, n_groups, n_blocks, n_feats, kernel_size,
                  conv=common.default_conv):
         super(RCAN, self).__init__()
         in_channels = n_input_channels
@@ -75,15 +75,18 @@ class RCAN(nn.Module):
         self.n_resblocks = n_blocks
         self.n_feats = n_feats
         # 64: 12181.17
-        self.kernel_size = 3
+        self.kernel_size = kernel_size
         reduction = 1
         scale = 2
         act = nn.ReLU(True)
 
+        # Round to nearest multiple of kernel size, subtract from input size
+        conv3d_padding = (kernel_size - 1) // 2
+
         # define head module
         conv3d = nn.Conv3d(
-            1, n_feats, (7 * n_frames, 3, 3),
-            padding=(0, 1, 1))
+            1, n_feats, (7 * n_frames, self.kernel_size, self.kernel_size),
+            padding=(0, conv3d_padding, conv3d_padding))
         modules_head = [conv3d]
 
         # define body module

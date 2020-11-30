@@ -2,23 +2,20 @@ import torch
 import logging
 import sys
 import os
-
+import numpy as np
 from torch.utils.data import DataLoader, random_split
 from torch import optim
 import torch.nn as nn
 from tqdm import tqdm
 import argparse
-from src.data_manager.dataset import DataSetManager
-from src.rcan.eval import eval_net
-from src.rcan.model import RCAN
-
-
-# TODO decrease epochs
-epochs = 300
+from deep_learning.src.data_manager.dataset import DataSetManager
+from deep_learning.src.rcan.eval import eval_net
+from deep_learning.src.rcan.model import RCAN
+import pandas as pd
 learning_rate = 10E-6
 validation_perc = 0.1
 
-validation_rounds_per_epoch = 2
+epochs_per_validation_round = 5
 
 
 class PSNR:
@@ -34,27 +31,26 @@ class PSNR:
         return 20 * torch.log10(1 / torch.sqrt(mse))
 
 
-
 def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, validation_perc, checkpoint_dir,
               preload_data, run_name):
+    config = {
+        'batch_size': batch_size,
+        'learning_rate': learning_rate,
+    }
     if hasattr(net, 'n_resgroups'):
-        config = {
-            'batch_size': batch_size,
-            'learning_rate': learning_rate,
+        config.update({
             'rcan_groups': net.n_resgroups,
             'rcan_blocks': net.n_resblocks,
             'rcan_feats': net.n_feats,
             'rcan_kernel_size': net.kernel_size,
-        }
+        })
     else:
-        config = {
-            'batch_size': batch_size,
-            'learning_rate': learning_rate,
+        config.update({
             'rcan_groups': net.module.n_resgroups,
             'rcan_blocks': net.module.n_resblocks,
             'rcan_feats': net.module.n_feats,
             'rcan_kernel_size': net.module.kernel_size,
-        }
+        })
 
     dataset = DataSetManager(dataset_dir, preload=preload_data)
     print(f'{len(dataset)} total datapoints')
@@ -87,13 +83,14 @@ def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, valid
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimiser, 'min')
     criterion = nn.MSELoss()
 
+    training_logs = []
+
     for epoch in range(epochs):
         net.train()
-        epoch_loss = 0
+        epoch_loss = []
         with tqdm(total=n_train, desc=f'Epoch {epoch + 1}/{epochs}', unit='img') as pbar:
             for batch in train_loader:
-
-                # Add empty channel to raw images
+                # Add empty channel to raw image_creation
                 raw_imgs = batch['raw']
                 out_imgs = batch['processed']
                 raw_imgs = raw_imgs.to(device=device, dtype=torch.float32)
@@ -103,9 +100,7 @@ def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, valid
                 out_imgs_pred = net(raw_imgs)
 
                 loss = criterion(out_imgs_pred, out_imgs)
-                epoch_loss += float(loss.item())
-
-                log_data = {'batch_loss': loss.item()}
+                epoch_loss.append(float(loss.item()))
 
                 pbar.set_postfix(**{'loss (batch)': loss.item()})
                 optimiser.zero_grad()
@@ -114,17 +109,6 @@ def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, valid
                 optimiser.step()
                 pbar.update(raw_imgs.shape[0])
                 global_step += 1
-                if (global_step % max(len(raw_imgs),
-                                      (int(num_batches / validation_rounds_per_epoch))) == 0) or global_step == 1:
-                    tqdm.write('Eval time')
-                    # TODO change back to val loader
-                    val_score = eval_net(net, val_loader, device, criterion)
-                    tqdm.write(f'Val score: {val_score}')
-                    scheduler.step(val_score)
-
-                    log_data['val_score'] = val_score
-
-                    logging.info('Validation cross entropy: {}'.format(val_score))
 
         if epoch % 5 == 0:
             learning_rate *= 0.99
@@ -138,7 +122,24 @@ def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, valid
                 torch.save(net, chkp_file)
                 logging.info(f'Checkpoint {epoch + 1} saved !')
 
+        epoch_data = {'epoch': epoch,
+                      'train_loss': np.mean(epoch_loss),
+                      'val_loss': None}
+        if (epoch % epochs_per_validation_round) == 0:
+            tqdm.write('Eval time')
+            val_score = eval_net(net, val_loader, device, criterion)
+            tqdm.write(f'Val score: {val_score}')
+            scheduler.step(val_score)
+
+            logging.info('Validation cross entropy: {}'.format(val_score))
+
+            epoch_data['val_loss'] = val_score
+
+        training_logs.append(epoch_data)
+        tqdm.write(str(epoch_data))
         global_step += 1
+
+    pd.DataFrame(training_logs).to_csv('training_log.csv', index=False)
 
     # writer.close()
 
@@ -146,20 +147,28 @@ def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, valid
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-cd', '--checkpoint-dir', default=os.path.join(os.path.dirname(__file__), 'checkpoints'))
-    parser.add_argument('-dd', '--data-dir', required=True)
+    parser.add_argument('-dd', '--data-dir', default='/Volumes/Samsung_T5/uni/sim_data_3frames')
     parser.add_argument('-s', '--save-checkpoints', action='store_true')
     parser.add_argument('-t', '--test-size', action='store_true')
     parser.add_argument('-b', '--batch-size', type=int, default=2)
+    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--groups', type=int, default=12)
+    parser.add_argument('--blocks', type=int, default=3)
+    parser.add_argument('--kernel-size', type=int, default=3)
     parser.add_argument('-p', '--preload-data', action='store_true')
     parser.add_argument('-l', '--logfile', default=os.path.join(os.path.dirname(__file__), 'out.log'))
-    parser.add_argument('-r', '--rname')
-    parser.add_argument('--nframes', default=1, type=int)
+    parser.add_argument('-r', '--rname', default='myrun')
+    parser.add_argument('--nframes', default=3, type=int)
     return parser.parse_args()
-
 
 
 if __name__ == '__main__':
     args = parse_args()
+
+    outpath = os.path.join(os.getcwd(), args.rname + '.pth')
+    if os.path.exists(outpath):
+        print('Output path already exists.')
+        quit()
     #
     # logging.basicConfig(filename=args.logfile,
     #                     level=logging.DEBUG)
@@ -167,20 +176,18 @@ if __name__ == '__main__':
 
     n_frames = args.nframes
 
-
     n_input_frames = n_frames
     n_imgs_per_frame = 7
 
-    n_output_frames = n_frames
+    n_output_frames = 1
 
     n_imgs_per_frame_output = 3
-
 
     input_channels = n_imgs_per_frame * n_input_frames
     output_channels = n_output_frames * n_imgs_per_frame_output
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net = RCAN(input_channels, output_channels, n_frames, 12, 3, 64)
+    net = RCAN(input_channels, output_channels, n_frames, args.groups, args.blocks, 64, args.kernel_size)
     if torch.cuda.is_available():
         if torch.cuda.device_count() > 1 and not args.test_size:
             devices = list([i for i, _ in enumerate(os.environ['CUDA_VISIBLE_DEVICES'].split(','))])
@@ -192,8 +199,9 @@ if __name__ == '__main__':
 
     if args.test_size:
         from torchsummary import summary
+
         print('Summary!')
-        summary(net, input_size=(1, 7*args.nframes, 256, 256))
+        summary(net, input_size=(1, 7 * args.nframes, 256, 256))
         quit()
 
     checkpoint_dir = args.checkpoint_dir
@@ -205,7 +213,7 @@ if __name__ == '__main__':
     try:
         train_net(net=net,
                   dataset_dir=args.data_dir,
-                  epochs=epochs,
+                  epochs=args.epochs,
                   batch_size=args.batch_size,
                   learning_rate=learning_rate,
                   device=device,
@@ -223,3 +231,4 @@ if __name__ == '__main__':
             os._exit(0)
     outpath = os.path.join(os.getcwd(), args.rname + '.pth')
     torch.save(net, outpath)
+    print(outpath)

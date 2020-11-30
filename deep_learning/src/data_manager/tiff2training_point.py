@@ -4,14 +4,14 @@ import argparse
 
 import numpy as np
 from tqdm import tqdm
-from src.data_manager.dataset import pair_files
+from deep_learning.src.data_manager.dataset import pair_files
 from tifffile import imread, imwrite
 from multiprocessing import Pool
 
 
 # Script to transform directory of full SIM image stacks into training data
 # Arguments:
-#    input_dir: directory containing pairs of SIM images and high-res image stacks in format <n_in.tif, n_lout.tif>
+#    input_dir: directory containing pairs of SIM image_creation and high-res image stacks in format <n_in.tif, n_lout.tif>
 #    outdir: output_directory
 #    nframes: number of SIM reconstructions to include per training point (i.e concurrent processing chunk size of network)
 
@@ -71,7 +71,7 @@ class TiffImagePair:
             raise e
 
 
-class NonOverlappingFramesSingleChannel(TiffImagePair):
+class NonOverlappingFramesSingleChannel2DOutput(TiffImagePair):
     def __init__(self, in_path, out_path, n_channels):
         self.n_channels = n_channels
         self.in_path = in_path
@@ -83,26 +83,23 @@ class NonOverlappingFramesSingleChannel(TiffImagePair):
         logging.debug('Loaded ' + in_path)
         logging.debug('Loaded ' + out_path)
 
-    # 3D rcan overlapping frames (ie input frames 1-9 -> output frames 1-3), channels are illuminations at each Z
     def __getitem__(self, i):
-        in_img_data = np.array([self.in_img[i * n_frames * self.n_channels:(i + 1) * n_frames * self.n_channels]])
+        in_start = i * n_frames * self.n_channels
+        in_end = (i + 1) * n_frames * self.n_channels
+        in_img_data = np.array([self.in_img[in_start:in_end]])
+
         # Re-order from Z, C, X, Y -> C, Z, X, Y
-        out_img_data = np.array([self.out_img[i * n_frames * out_channels:(i + 1) * n_frames * out_channels]])
+        out_start = i * n_frames * out_channels
+        out_end = (i + 1) * n_frames * out_channels
+        out_img_data = np.array([self.out_img[out_start:out_end]])
+
+        out_img_data = out_img_data.squeeze()
 
         return {'raw': normalise(in_img_data),
                 'processed': normalise(out_img_data)}
 
     def __len__(self):
         return self.z // (n_frames * self.n_channels) - 1
-
-
-class NonOverlappingFramesSingleChannel2DOutput(NonOverlappingFramesSingleChannel):
-
-    # 3D rcan overlapping frames (ie input frames 1-9 -> output frames 1-3), channels are illuminations at each Z
-    def __getitem__(self, i):
-        data = super().__getitem__(i)
-        data['processed'] = data['processed'].squeeze()
-        return data
 
 
 def convert_filepair(pair):
@@ -127,9 +124,9 @@ def convert_filepair(pair):
         imwrite(out_fname, processed, compress=6)
 
 
-# for p in pairs:
-#     print(p)
-#     convert_filepair(p)
-#     quit()
-with Pool(8) as p:
-    res = list(tqdm(p.imap_unordered(convert_filepair, pairs), total=len(pairs)))
+for p in pairs:
+    convert_filepair(p)
+
+# Uncomment to use multiple threads
+# with Pool(8) as p:
+#     res = list(tqdm(p.imap_unordered(convert_filepair, pairs), total=len(pairs)))
