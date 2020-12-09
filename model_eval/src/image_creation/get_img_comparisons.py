@@ -18,11 +18,9 @@ def normalise(img):
 
 def make_film(images):
     images = [normalise(i[:, 125:275, 125:275]) for i in images]
-    images = [i.sum(axis=1) for i in images]
-    [plt.show(i, cmap='gray', vmin=0, vmax=1) for i in images]
 
-    quit()
     print([i.max() for i in images])
+    print([i.shape for i in images])
     film_data1 = np.concatenate(images[0:2], axis=2)
     print(film_data1.shape)
     film_data2 = np.concatenate(images[2:], axis=2)
@@ -33,13 +31,14 @@ def make_film(images):
 
     film_data[film_data < 0] = 0
     print(film_data.shape)
-    # outpath = os.path.join(outdir, 'movie.gif')
-    # imageio.mimsave(outpath, film_data)
+    outpath = os.path.join(outdir, 'movie.gif')
+    imageio.mimsave(outpath, film_data)
+    quit()
+    print(outpath)
     for frame in range(15, film_data.shape[0]):
         still_frame = film_data[frame]
         imshow(still_frame)
         plt.show()
-        quit()
         outpath = os.path.join(outdir, f'movie_still_{frame}.png')
         Image.fromarray(still_frame * 255).convert("L").save(outpath)
 
@@ -48,7 +47,7 @@ def make_film(images):
 
 
 
-dirname = '/Volumes/Samsung_T5/uni/external_sim_images/'
+dirname = '/Volumes/Samsung_T5/uni/sim/external_sim_images'
 outdir = './tmp'
 
 try:
