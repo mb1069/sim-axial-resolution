@@ -1,6 +1,6 @@
 classdef hexSimProcessor < handle
 %     Adapted from code released by Mark Alan's group at Imperial College London
-    
+   
     properties
         N=512;          % Points to use in FFT
         pixelsize = 6.5;    % Camera pixel size
@@ -19,7 +19,7 @@ classdef hexSimProcessor < handle
         cleanup=true;
         debug=false;
         axial=false;     % if axial/radial polarised illumination is used
-        usemodulation=true;     % if axial/radial polarised illumination is used
+        usemodulation=true;     % use measured modulation values
     end
     properties (Access = private) 
         dx;         % Sampling in image plane
@@ -37,7 +37,7 @@ classdef hexSimProcessor < handle
     end
     
     methods
-        function obj = hexSimProcessor()
+        function obj = HexSimProcessor()
             %UNTITLED Construct an instance of this class
             %   Detailed explanation goes here
             
@@ -76,9 +76,12 @@ classdef hexSimProcessor < handle
                 [kx(i),ky(i),p(i),ampl(i)] = o.findCarrier(i,m);
             end
 %             toc
+            kx
+            ky
+            p
             
             % Pre-calculate reconstruction factors
-            o.reconfactor=single(zeros(2*o.N,2*o.N,7));
+            o.reconfactor=zeros(2*o.N,2*o.N,7,'single');
 
             dx2 = o.dx/2;
 %             [x2,y2] = meshgrid(-dx2*o.N:dx2:dx2*o.N-dx2,-dx2*o.N:dx2:dx2*o.N-dx2);
@@ -143,8 +146,8 @@ classdef hexSimProcessor < handle
             wienerfilter(mtot) = (1-kr(mtot)/kmax)./(wienerfilter(mtot)+o.w^2);
             o.postfilter = fftshift(single(wienerfilter));
 
-            o.carray = complex(zeros(2*o.N,'single'),0);
-            o.imgbig = single(zeros(2*o.N,2*o.N,7));    % space for oversampled images
+            o.carray = zeros(2*o.N,'like',complex(single(0)));
+            o.imgbig = zeros(2*o.N,2*o.N,7,'single');    % space for oversampled images
             
             if o.cleanup
                 imgo = o.reconstruct(img);
@@ -219,15 +222,10 @@ classdef hexSimProcessor < handle
             end
             img2fs = fft(img2,nim,3);
             clear img2;
-            block1 = img2fs(:,:,[1:nim7/2]);
-            s = size(block1);
-            middle_block = zeros([s(1), s(2), 80]);
-            block2 = img2fs(:,:,[end-(nim7/2-1):end]);
-            padded_img2fs = cat(3, block1, middle_block, block2);
-            
-            imgout = ifft(padded_img2fs,120,3,'symmetric');
+            imgout = ifft(img2fs(:,:,[1:nim7/2, end-(nim7/2-1):end]),120,3,'symmetric');
             clear imf2fs;
             imgout = ifft2(fft2(imgout).*o.postfilter,'symmetric');
+            whos
         end
         
         function [imgout] = batchreconstructcompact(o,img)

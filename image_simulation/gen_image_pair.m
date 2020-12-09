@@ -5,7 +5,7 @@
 % to generate a random point cloud in a sphere;
 % gen_image_pair(<SIM input resolution>, -1, <number of points in sphere>, 2048, 'in.tif', 'out.tif')
 
-% to generate a chromatin structure 
+% to generate a chromatin structure
 % gen_image_pair(<SIM input resolution>, <structure index (1-100), -1, 2048, 'in.tif', 'out.tif')
 
 
