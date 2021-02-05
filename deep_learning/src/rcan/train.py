@@ -95,8 +95,7 @@ def train_net(net, dataset_dir, epochs, batch_size, learning_rate, device, valid
                 out_imgs = batch['processed']
                 raw_imgs = raw_imgs.to(device=device, dtype=torch.float32)
                 out_imgs = out_imgs.to(device=device, dtype=torch.float32)
-                print(raw_imgs.shape)
-                quit()
+
                 out_imgs_pred = net(raw_imgs)
 
                 loss = criterion(out_imgs_pred, out_imgs)
