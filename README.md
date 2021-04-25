@@ -7,6 +7,9 @@ Miguel Boland <sup>1</sup>, Dr. Edward A.K. Cohen <sup>1</sup>, Dr. Seth Flaxman
 
 Imperial College London
 
+## Pre-print available:
+https://arxiv.org/pdf/2009.02264v3.pdf
+
 ## Repository organisation
 The code in this repository is organised as follows:
 
